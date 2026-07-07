@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+venv/
+.venv/
+env/
+.env
+.env.*
+
+# Build outputs
+/dist/
+/build/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Editor / OS files
+.vscode/
+.idea/
+
+# Local data / uploads
+uploads/
+uploaded_images/
+media/

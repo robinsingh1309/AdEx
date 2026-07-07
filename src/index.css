@@ -1,0 +1,176 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #f5f2ec;
+  --surface:  #ffffff;
+  --surface2: #edeae3;
+  --border:   #d6d1c8;
+  --text:     #1c2b26;
+  --muted:    #6b7a72;
+  --accent:   #0d9488;
+  --green:    #059669;
+  --blue:     #0891b2;
+  --danger:   #dc2626;
+  --font:     'Inter', system-ui, sans-serif;
+  --mono:     'JetBrains Mono', monospace;
+}
+
+html, body, #root { height: 100%; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.ant-layout { background: var(--bg) !important; }
+.ant-layout-sider { background: var(--surface) !important; border-right: 1px solid var(--border) !important; }
+
+/* ── Menu ───────────────────────────────────────────────────────────────── */
+.ant-menu { background: transparent !important; border: none !important; }
+.ant-menu-item { color: var(--muted) !important; border-radius: 6px !important; margin: 2px 8px !important; width: calc(100% - 16px) !important; }
+.ant-menu-item:hover { color: var(--text) !important; background: var(--surface2) !important; }
+.ant-menu-item-selected { color: var(--accent) !important; background: rgba(13,148,136,0.1) !important; }
+.ant-menu-item-selected .anticon { color: var(--accent) !important; }
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+.ant-card { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 10px !important; color: var(--text) !important; }
+.ant-card-head { border-bottom: 1px solid var(--border) !important; color: var(--text) !important; background: transparent !important; }
+.ant-card-head-title { color: var(--text) !important; }
+.ant-card-body { color: var(--text) !important; }
+
+/* ── Modal ──────────────────────────────────────────────────────────────── */
+.ant-modal-content { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 12px !important; color: var(--text) !important; box-shadow: 0 8px 32px rgba(0,0,0,0.12) !important; }
+.ant-modal-header { background: var(--surface) !important; border-bottom: 1px solid var(--border) !important; }
+.ant-modal-title { color: var(--text) !important; }
+.ant-modal-close { color: var(--muted) !important; }
+.ant-modal-footer { border-top: 1px solid var(--border) !important; background: var(--surface) !important; }
+.ant-modal-body { color: var(--text) !important; }
+
+/* ── Table ──────────────────────────────────────────────────────────────── */
+.ant-table { background: var(--surface) !important; color: var(--text) !important; }
+.ant-table-container { background: var(--surface) !important; }
+.ant-table-thead > tr > th { background: var(--surface2) !important; color: var(--muted) !important; border-bottom: 1px solid var(--border) !important; font-size: 11px !important; text-transform: uppercase; letter-spacing: 0.05em; }
+.ant-table-tbody > tr > td { border-bottom: 1px solid var(--border) !important; color: var(--text) !important; background: var(--surface) !important; }
+.ant-table-tbody > tr:hover > td { background: var(--surface2) !important; }
+.ant-table-placeholder { background: var(--surface) !important; }
+.ant-table-pagination { background: transparent !important; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.ant-btn-primary { background: var(--accent) !important; border-color: var(--accent) !important; color: #fff !important; font-weight: 600 !important; }
+.ant-btn-primary:hover { opacity: 0.85 !important; }
+.ant-btn-default { background: var(--surface) !important; border-color: var(--border) !important; color: var(--text) !important; }
+.ant-btn-default:hover { border-color: var(--accent) !important; color: var(--accent) !important; }
+.ant-btn-dangerous { background: var(--danger) !important; border-color: var(--danger) !important; color: #fff !important; }
+.ant-btn-dangerous.ant-btn-default { background: transparent !important; color: var(--danger) !important; }
+.ant-btn-dangerous.ant-btn-default:hover { background: rgba(220,38,38,0.08) !important; }
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+.ant-input, .ant-input-number-input { background: var(--surface) !important; border-color: var(--border) !important; color: var(--text) !important; border-radius: 6px !important; }
+.ant-input::placeholder { color: var(--muted) !important; }
+.ant-input:focus, .ant-input:hover { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(13,148,136,0.15) !important; }
+.ant-input-number { background: var(--surface) !important; border-color: var(--border) !important; color: var(--text) !important; }
+.ant-input-number:hover, .ant-input-number-focused { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(13,148,136,0.15) !important; }
+
+/* ── Select ─────────────────────────────────────────────────────────────── */
+.ant-select-selector { background: var(--surface) !important; border-color: var(--border) !important; color: var(--text) !important; }
+.ant-select-dropdown { background: var(--surface) !important; border: 1px solid var(--border) !important; box-shadow: 0 4px 16px rgba(0,0,0,0.08) !important; }
+.ant-select-item { color: var(--text) !important; }
+.ant-select-item-option-active, .ant-select-item-option-selected { background: var(--surface2) !important; }
+
+/* ── Upload ─────────────────────────────────────────────────────────────── */
+.ant-upload-drag { background: var(--surface) !important; border-color: var(--border) !important; border-radius: 10px !important; }
+.ant-upload-drag:hover { border-color: var(--accent) !important; background: rgba(13,148,136,0.02) !important; }
+.ant-upload-text { color: var(--text) !important; }
+.ant-upload-hint { color: var(--muted) !important; }
+
+/* ── Statistic ──────────────────────────────────────────────────────────── */
+.ant-statistic-title { color: var(--muted) !important; font-size: 11px !important; text-transform: uppercase; letter-spacing: 0.05em; }
+.ant-statistic-content { color: var(--text) !important; }
+
+/* ── Divider ────────────────────────────────────────────────────────────── */
+.ant-divider { border-color: var(--border) !important; }
+.ant-divider-inner-text { color: var(--muted) !important; background: var(--surface) !important; padding: 0 10px; }
+
+/* ── Form ───────────────────────────────────────────────────────────────── */
+.ant-form-item-label > label { color: var(--muted) !important; font-size: 12px !important; }
+.ant-form-item-explain-error { color: var(--danger) !important; }
+
+/* ── Messages & Alerts ──────────────────────────────────────────────────── */
+.ant-message-notice-content { background: var(--surface) !important; border: 1px solid var(--border) !important; color: var(--text) !important; border-radius: 8px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.08) !important; }
+.ant-alert { border-radius: 8px !important; }
+.ant-alert-message { color: var(--text) !important; }
+.ant-alert-description { color: var(--muted) !important; }
+
+/* ── Progress ───────────────────────────────────────────────────────────── */
+.ant-progress-text { color: var(--text) !important; }
+
+/* ── Tooltip ────────────────────────────────────────────────────────────── */
+.ant-tooltip-inner { background: var(--text) !important; color: var(--surface) !important; border: none !important; border-radius: 6px !important; font-size: 12px !important; }
+.ant-tooltip-arrow-content { background: var(--text) !important; }
+
+/* ── Steps ──────────────────────────────────────────────────────────────── */
+.ant-steps-item-title { color: var(--text) !important; }
+.ant-steps-item-description { color: var(--muted) !important; }
+.ant-steps-item-finish .ant-steps-item-icon,
+.ant-steps-item-process .ant-steps-item-icon { background: var(--accent) !important; border-color: var(--accent) !important; }
+.ant-steps-item-wait .ant-steps-item-icon { border-color: var(--border) !important; }
+.ant-steps-item-wait .ant-steps-icon { color: var(--muted) !important; }
+.ant-steps-item-process .ant-steps-icon { color: #fff !important; }
+
+/* ── Descriptions ───────────────────────────────────────────────────────── */
+.ant-descriptions-view { border-color: var(--border) !important; }
+.ant-descriptions-item-label { color: var(--muted) !important; background: var(--surface2) !important; font-size: 12px !important; }
+.ant-descriptions-item-content { color: var(--text) !important; background: var(--surface) !important; }
+.ant-descriptions-bordered .ant-descriptions-item-label { background: var(--surface2) !important; border-right-color: var(--border) !important; }
+.ant-descriptions-row > td { border-bottom-color: var(--border) !important; }
+
+/* ── Popover / Popconfirm ───────────────────────────────────────────────── */
+.ant-popover-inner { background: var(--surface) !important; border: 1px solid var(--border) !important; box-shadow: 0 6px 24px rgba(0,0,0,0.1) !important; border-radius: 10px !important; }
+.ant-popover-inner-content { color: var(--text) !important; }
+.ant-popconfirm-title { color: var(--text) !important; font-weight: 600 !important; }
+.ant-popconfirm-message-title { color: var(--text) !important; }
+.ant-popconfirm-description { color: var(--muted) !important; }
+.ant-popover-arrow::before, .ant-popover-arrow::after { background: var(--surface) !important; }
+
+/* ── Tags ───────────────────────────────────────────────────────────────── */
+.ant-tag { border-radius: 4px !important; font-size: 11px !important; }
+
+/* ── Spin ───────────────────────────────────────────────────────────────── */
+.ant-spin-text { color: var(--muted) !important; margin-top: 8px !important; }
+.ant-spin-dot-item { background-color: var(--accent) !important; }
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+.ant-empty-description { color: var(--muted) !important; }
+.ant-empty-image svg { opacity: 0.35; }
+
+/* ── Pagination ─────────────────────────────────────────────────────────── */
+.ant-pagination-item { background: var(--surface) !important; border-color: var(--border) !important; border-radius: 6px !important; }
+.ant-pagination-item a { color: var(--text) !important; }
+.ant-pagination-item-active { border-color: var(--accent) !important; background: rgba(13,148,136,0.08) !important; }
+.ant-pagination-item-active a { color: var(--accent) !important; }
+.ant-pagination-prev button, .ant-pagination-next button { background: var(--surface) !important; border-color: var(--border) !important; color: var(--text) !important; }
+.ant-pagination-options .ant-select-selector { background: var(--surface) !important; }
+.ant-select-item-option-content { color: var(--text) !important; }
+
+/* ── Slider ─────────────────────────────────────────────────────────────── */
+.ant-slider-rail { background: var(--border) !important; }
+.ant-slider-track { background: var(--accent) !important; }
+.ant-slider-handle::after { border-color: var(--accent) !important; background: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent) !important; }
+
+/* ── Leaflet ────────────────────────────────────────────────────────────── */
+.leaflet-container { background: #e8eee5 !important; font-family: var(--font) !important; }
+.leaflet-popup-content-wrapper { background: var(--surface) !important; border: 1px solid var(--border) !important; color: var(--text) !important; border-radius: 8px !important; box-shadow: 0 4px 20px rgba(0,0,0,0.12) !important; }
+.leaflet-popup-content { color: var(--text) !important; }
+.leaflet-popup-tip { background: var(--surface) !important; }
+.leaflet-control-zoom a { background: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important; }
+.leaflet-control-zoom a:hover { background: var(--surface2) !important; }
+.leaflet-bar { border: 1px solid var(--border) !important; border-radius: 6px !important; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important; }
+.leaflet-control-attribution { background: rgba(255,255,255,0.8) !important; color: var(--muted) !important; }
+
+/* ── Utilities ──────────────────────────────────────────────────────────── */
+.mono { font-family: var(--mono) !important; }
+.page-wrap { padding: 32px 36px; max-width: 1200px; }
+.section-label { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
