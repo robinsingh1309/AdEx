@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Button, Card, Alert, Table, Spin, message } from 'antd'
+import { useState, useRef } from 'react'
+import { Button, Card, Alert, Table, Spin, message, Progress } from 'antd'
 import { CheckCircleOutlined, VideoCameraOutlined,
          FolderOpenOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import { serverApi } from '../utils/api'
@@ -7,48 +7,48 @@ import { serverApi } from '../utils/api'
 export default function UploadPage({ onStartReview }) {
   const [step, setStep]                 = useState(0)
   const [pickedName, setPickedName]     = useState(null)   // video file name, known as soon as it's picked
-  const [videoInfo, setVideoInfo]       = useState(null)   // { name, serverPath } — set once copy finishes
-  const [copying, setCopying]           = useState(false)
-  const [copyElapsed, setCopyElapsed]   = useState(0)
+  const [videoInfo, setVideoInfo]       = useState(null)   // { name, serverPath } — set once upload finishes
+  const [uploading, setUploading]       = useState(false)
+  const [uploadPct, setUploadPct]       = useState(0)
   const [extracting, setExtracting]     = useState(false)
   const [extractError, setExtractError] = useState(null)
   const [gpsPoints, setGpsPoints]       = useState(null)
   const [gpsPreview, setGpsPreview]     = useState([])
 
-  const copyTimerRef = useRef(null)
+  const fileInputRef = useRef(null)
 
-  useEffect(() => {
-    if (copying) {
-      setCopyElapsed(0)
-      copyTimerRef.current = setInterval(() => setCopyElapsed(s => s + 1), 1000)
-    } else if (copyTimerRef.current) {
-      clearInterval(copyTimerRef.current)
-      copyTimerRef.current = null
-    }
-    return () => { if (copyTimerRef.current) clearInterval(copyTimerRef.current) }
-  }, [copying])
-
-  // ── Step 0: Video → auto-extract GPS from GoPro telemetry, then copy ───
+  // ── Step 0: Video → upload to server, then extract GPS from GoPro telemetry ──
   //
-  // GPS extraction runs against the *original* picked file first — GPMF
-  // parsing only reads the moov box plus small telemetry sample ranges, so
-  // it takes seconds regardless of file size. That way a "no GPS" failure
-  // shows up immediately instead of after waiting through a multi-minute
-  // copy of a multi-GB video. The (slow, size-proportional) copy into the
-  // inventory folder only happens once GPS is confirmed present.
+  // Unlike a local-picker setup, the server can't inspect the file until the
+  // bytes have actually arrived over the network, so GPS extraction now runs
+  // *after* upload rather than before it. If no GPS telemetry is found, the
+  // uploaded file is removed from the server so failed attempts don't pile up
+  // in the inventory folder.
 
-  const handlePickVideo = async () => {
+  const handleFileChosen = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file later
+    if (!file) return
+
     setExtractError(null)
-    setPickedName(null)
+    setPickedName(file.name)
     setVideoInfo(null)
     setGpsPoints(null)
     setGpsPreview([])
+
+    let uploadedPath = null
     try {
-      const picked = await serverApi.pickVideoFile()
-      setPickedName(picked.name)
+      setUploading(true)
+      setUploadPct(0)
+      const uploaded = await serverApi.uploadVideo(file, (evt) => {
+        if (evt.total) setUploadPct(Math.round((evt.loaded / evt.total) * 100))
+      })
+      uploadedPath = uploaded.path
+      setUploading(false)
+      setVideoInfo({ name: uploaded.filename, serverPath: uploaded.path })
 
       setExtracting(true)
-      const gpsRes = await serverApi.extractGps(picked.path)
+      const gpsRes = await serverApi.extractGps(uploaded.path)
       setExtracting(false)
       setGpsPoints(gpsRes.points)
       setGpsPreview(gpsRes.points.slice(0, 5).map((p, i) => ({
@@ -58,21 +58,23 @@ export default function UploadPage({ onStartReview }) {
         lng:  p.lng.toFixed(6),
       })))
       message.success(`GPS extracted from video — ${gpsRes.points.length} points`)
-
-      setCopying(true)
-      const result = await serverApi.copyVideo(picked.path)
-      setVideoInfo({ name: picked.name, serverPath: result.path })
       setStep(1)
     } catch (e) {
       const detail = e?.response?.data?.detail ?? e.message
       if (e?.response?.status === 422) {
         setExtractError(detail)
+        // GPS wasn't found — clean up the uploaded file rather than leaving
+        // an unusable video sitting in the inventory folder.
+        if (uploadedPath) {
+          serverApi.deleteUploadedVideo(uploadedPath).catch(() => {})
+        }
+        setVideoInfo(null)
       } else {
-        message.error('Could not read video: ' + detail)
+        message.error('Could not process video: ' + detail)
       }
     } finally {
+      setUploading(false)
       setExtracting(false)
-      setCopying(false)
     }
   }
 
@@ -165,21 +167,14 @@ export default function UploadPage({ onStartReview }) {
         {gpsPoints ? (
           <>
             <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.25)', borderRadius: 8 }}>
-              {videoInfo ? (
-                <CheckCircleOutlined style={{ color: 'var(--green)', fontSize: 20, flexShrink: 0 }} />
-              ) : (
-                <Spin size="small" />
-              )}
+              <CheckCircleOutlined style={{ color: 'var(--green)', fontSize: 20, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pickedName}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>
                   {gpsPoints.length.toLocaleString()} GPS points extracted · starts {new Date(gpsPoints[0].ts).toLocaleTimeString('en-IN', { hour12: false })}
-                  {!videoInfo && ` · copying to inventory… ${copyElapsed}s (large files take a while — proportional to file size and disk speed)`}
                 </div>
               </div>
-              {videoInfo && (
-                <Button size="small" onClick={() => { setPickedName(null); setVideoInfo(null); setGpsPoints(null); setGpsPreview([]); setStep(0) }}>Change</Button>
-              )}
+              <Button size="small" onClick={() => { setPickedName(null); setVideoInfo(null); setGpsPoints(null); setGpsPreview([]); setStep(0) }}>Change</Button>
             </div>
             {gpsPreview.length > 0 && (
               <div>
@@ -191,16 +186,39 @@ export default function UploadPage({ onStartReview }) {
         ) : (
           <div style={{ textAlign: 'center', padding: '32px 20px' }}>
             <VideoCameraOutlined style={{ fontSize: 30, color: 'var(--accent)', display: 'block', marginBottom: 12 }} />
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*,.mp4,.mov,.avi,.mkv"
+              style={{ display: 'none' }}
+              onChange={handleFileChosen}
+            />
+
             <Button
               size="large"
               icon={<FolderOpenOutlined />}
-              loading={extracting}
-              onClick={handlePickVideo}
+              loading={uploading || extracting}
+              onClick={() => fileInputRef.current?.click()}
             >
-              {extracting ? 'Extracting GPS…' : 'Browse Video File'}
+              {uploading ? `Uploading… ${uploadPct}%` : extracting ? 'Extracting GPS…' : 'Browse Video File'}
             </Button>
+
+            {uploading && (
+              <Progress
+                percent={uploadPct}
+                size="small"
+                strokeColor="var(--accent)"
+                trailColor="var(--border)"
+                style={{ maxWidth: 320, margin: '12px auto 0' }}
+              />
+            )}
+            {(uploading || extracting) && (
+              <Spin size="small" style={{ display: 'block', marginTop: 10 }} />
+            )}
+
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
-              GPS is checked first — the file is only copied once telemetry is found
+              The file uploads first, then GPS telemetry is checked — large files take longer proportional to file size and your connection speed
             </div>
             {extractError && (
               <Alert

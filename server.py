@@ -1,9 +1,19 @@
 """
-OOH Survey Platform — Local Backend
-Run: python server.py  →  http://localhost:8765
+OOH Survey Platform — Backend
+Run: python server.py  →  http://0.0.0.0:8765
+
+Server-deployment notes:
+- Inventory root defaults to $HOME/OOH_Inventory. Deploy this process as the
+  user whose home directory should hold the data (e.g. run as `admin` so this
+  resolves to /home/admin/OOH_Inventory), or set OOH_INVENTORY_PATH explicitly.
+- Native OS file/folder pickers have been removed — they require a desktop
+  session and cannot work on a headless server. All file intake now goes
+  through browser-based multipart upload (/api/upload/video) and GPS
+  extraction runs against the uploaded file, not an arbitrary client path.
+- CORS is left wide open (allow_origins=["*"]) to match current behavior;
 """
 
-import os, json, shutil, base64, sys, re, csv
+import os, json, shutil, base64, re, csv
 from pathlib import Path
 from datetime import date
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
@@ -15,34 +25,11 @@ import uvicorn
 
 from gpmf import extract_gps_from_video
 
-app = FastAPI(title="OOH Local Platform")
+app = FastAPI(title="OOH Platform")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# ── Config persistence ────────────────────────────────────────────────────
-
-CONFIG_FILE = Path(__file__).parent / "ooh_config.json"
-
-def _default_folder() -> Path:
-    if sys.platform == "win32":
-        d_adex = Path("D:/Adex")
-        if d_adex.exists():
-            return d_adex / "OOH_Inventory"
-    return Path.home() / "OOH_Inventory"
-
-def _save_config(root: Path):
-    CONFIG_FILE.write_text(json.dumps({"folder": str(root)}, indent=2))
-
-def _load_config() -> Optional[Path]:
-    try:
-        data = json.loads(CONFIG_FILE.read_text())
-        p = Path(data["folder"])
-        if p.exists():
-            return p
-    except Exception:
-        pass
-    return None
-
 # ── Inventory root ────────────────────────────────────────────────────────
+# Configurable via OOH_INVENTORY_PATH; falls back to $HOME/OOH_Inventory.
 
 ROOT: Optional[Path] = None
 
@@ -63,145 +50,25 @@ def ensure_structure(root: Path):
             "trash": {},
         }, indent=2))
 
-def _init_default():
-    """Load persisted folder or create the default one on first run."""
+def _init_root():
     global ROOT
-    saved = _load_config()
-    if saved:
-        ROOT = saved
-        ensure_structure(ROOT)
-        return
-    default = _default_folder()
-    default.mkdir(parents=True, exist_ok=True)
-    ensure_structure(default)
-    ROOT = default
-    _save_config(ROOT)
-
-_init_default()
-
-# ── Native OS pickers ─────────────────────────────────────────────────────
-
-def _pick_folder_native() -> Optional[str]:
-    if sys.platform == "win32":
-        import subprocess
-        # Helper form with TopMost=True keeps the dialog in front of Chrome
-        ps = (
-            "Add-Type -AssemblyName System.Windows.Forms;"
-            "$h=New-Object System.Windows.Forms.Form;"
-            "$h.TopMost=$true;$h.ShowInTaskbar=$false;"
-            "$h.Opacity=0;$h.StartPosition='CenterScreen';$h.Show();$h.Activate();"
-            "$fb=New-Object System.Windows.Forms.FolderBrowserDialog;"
-            "$fb.Description='Select OOH Inventory Folder';"
-            "$fb.ShowNewFolderButton=$true;"
-            "$r=$fb.ShowDialog($h);$h.Dispose();"
-            "if($r -eq 'OK'){Write-Output $fb.SelectedPath}"
-        )
-        try:
-            out = subprocess.run(["powershell","-NoProfile","-Command",ps],
-                                 capture_output=True, text=True, timeout=120)
-        except subprocess.TimeoutExpired:
-            return None
-        p = out.stdout.strip()
-        return p or None
-
-    elif sys.platform == "darwin":
-        import subprocess
-        s = 'tell application "Finder" to set f to choose folder with prompt "Select OOH Inventory Folder"\nPOSIX path of f'
-        r = subprocess.run(["osascript","-e",s], capture_output=True, text=True)
-        p = r.stdout.strip().rstrip("/")
-        return p or None
-
-    else:
-        import subprocess
-        for cmd in [
-            ["zenity","--file-selection","--directory","--title=Select OOH Inventory Folder"],
-            ["kdialog","--getexistingdirectory", os.path.expanduser("~")],
-        ]:
-            try:
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-                if r.stdout.strip():
-                    return r.stdout.strip()
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                continue
-        return None
-
-
-def _pick_file_native(title: str, filetypes: str) -> Optional[str]:
-    if sys.platform == "win32":
-        import subprocess
-        ps = (
-            "Add-Type -AssemblyName System.Windows.Forms;"
-            "$h=New-Object System.Windows.Forms.Form;"
-            "$h.TopMost=$true;$h.ShowInTaskbar=$false;"
-            "$h.Opacity=0;$h.StartPosition='CenterScreen';$h.Show();$h.Activate();"
-            "$f=New-Object System.Windows.Forms.OpenFileDialog;"
-            f"$f.Title='{title}';$f.Filter='{filetypes}';$f.Multiselect=$false;"
-            "$r=$f.ShowDialog($h);$h.Dispose();"
-            "if($r -eq 'OK'){Write-Output $f.FileName}"
-        )
-        try:
-            out = subprocess.run(["powershell","-NoProfile","-Command",ps],
-                                 capture_output=True, text=True, timeout=120)
-        except subprocess.TimeoutExpired:
-            return None
-        p = out.stdout.strip()
-        return p or None
-
-    elif sys.platform == "darwin":
-        import subprocess
-        s = f'tell application "Finder" to set f to choose file with prompt "{title}"\nPOSIX path of f'
-        r = subprocess.run(["osascript","-e",s], capture_output=True, text=True)
-        p = r.stdout.strip().rstrip("/")
-        return p or None
-
-    else:
-        import subprocess
-        for cmd in [
-            ["zenity","--file-selection",f"--title={title}"],
-            ["kdialog","--getopenfilename", os.path.expanduser("~")],
-        ]:
-            try:
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-                if r.stdout.strip():
-                    return r.stdout.strip()
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                continue
-        return None
-
-# ── Folder endpoints ──────────────────────────────────────────────────────
-
-@app.post("/api/pick-folder")
-def pick_folder():
-    global ROOT
-    path = _pick_folder_native()
-    if not path:
-        raise HTTPException(400, "No folder selected")
-    p = Path(path).resolve()
-    if not p.exists():
-        raise HTTPException(400, f"Folder does not exist: {p}")
-    ROOT = p
+    env_path = os.environ.get("OOH_INVENTORY_PATH")
+    ROOT = Path(env_path) if env_path else (Path.home() / "OOH_Inventory")
+    ROOT.mkdir(parents=True, exist_ok=True)
     ensure_structure(ROOT)
-    _save_config(ROOT)
-    return {"ok": True, "path": str(ROOT), "name": ROOT.name}
 
+_init_root()
 
-class FolderRequest(BaseModel):
-    path: str
-
-@app.post("/api/set-folder")
-def set_folder(req: FolderRequest):
-    global ROOT
-    p = Path(req.path).expanduser().resolve()
-    p.mkdir(parents=True, exist_ok=True)
-    ROOT = p
-    ensure_structure(ROOT)
-    _save_config(ROOT)
-    return {"ok": True, "path": str(ROOT), "name": ROOT.name}
-
+# ── Folder endpoint ───────────────────────────────────────────────────────
+# Read-only on a server deployment: the inventory location is fixed by
+# OOH_INVENTORY_PATH / $HOME at process start, not user-selectable at runtime.
 
 @app.get("/api/folder")
 def get_folder():
-    return {"path": str(ROOT) if ROOT else None, "name": ROOT.name if ROOT else None}
+    return {
+        "path": str(ROOT),
+        "name": ROOT.name
+    }
 
 # ── Inventory JSON ────────────────────────────────────────────────────────
 
@@ -231,40 +98,14 @@ def delete_site_files(req: DeleteSiteFilesRequest):
         shutil.rmtree(site_dir)
     return {"ok": True}
 
-# ── Native file picker + local copy ──────────────────────────────────────
-
-@app.post("/api/pick-video-file")
-def pick_video_file():
-    path = _pick_file_native("Select Survey Video",
-                             "Video Files|*.mp4;*.mov;*.avi;*.mkv;*.MP4;*.MOV|All Files|*.*")
-    if not path:
-        raise HTTPException(400, "No file selected")
-    p = Path(path)
-    if not p.exists():
-        raise HTTPException(400, f"File not found: {p}")
-    return {"path": str(p), "name": p.name}
-
-
-class CopyVideoRequest(BaseModel):
-    src: str
-
-@app.post("/api/copy-video")
-def copy_video(req: CopyVideoRequest):
-    root = get_root()
-    src = Path(req.src)
-    if not src.exists():
-        raise HTTPException(400, f"Source not found: {src}")
-    dest = root / "Videos" / src.name
-    shutil.copy2(str(src), str(dest))
-    return {"path": f"Videos/{src.name}", "filename": src.name}
-
-
-# ── Upload (direct — clients should call http://localhost:8765 to skip proxy) ──
+# ── Upload ────────────────────────────────────────────────────────────────
 
 @app.post("/api/upload/video")
 async def upload_video(file: UploadFile = File(...)):
     root = get_root()
-    dest = root / "Videos" / file.filename
+    # Guard against path traversal via a crafted filename (e.g. "../../etc/x").
+    safe_name = Path(file.filename).name
+    dest = root / "Videos" / safe_name
     CHUNK = 4 * 1024 * 1024  # 4 MB per chunk
     with open(dest, "wb") as fout:
         while True:
@@ -272,23 +113,26 @@ async def upload_video(file: UploadFile = File(...)):
             if not chunk:
                 break
             fout.write(chunk)
-    return {"path": f"Videos/{file.filename}", "filename": file.filename}
+    return {"path": f"Videos/{safe_name}", "filename": safe_name}
 
 # ── GPS extraction (from GoPro GPMF telemetry embedded in the video) ────────
-# Runs directly against the original picked file (before it's copied into the
-# inventory) so a "no GPS" failure surfaces in seconds instead of after a
-# multi-minute copy of a multi-GB video. Same arbitrary-local-path trust model
-# as /api/copy-video — no root confinement, since it's read-only.
+# Runs against a file that has already been uploaded into the inventory
+# (Videos/<name>), not an arbitrary client-supplied filesystem path — the
+# server has no visibility into the uploading browser's local disk.
 
 class ExtractGpsRequest(BaseModel):
-    src: str
+    video_path: str  # e.g. "Videos/myfile.mp4", as returned by /api/upload/video
 
 @app.post("/api/extract-gps")
 def extract_gps(req: ExtractGpsRequest):
     root = get_root()
-    src = Path(req.src)
+    src = (root / req.video_path).resolve()
+    try:
+        src.relative_to(root.resolve())
+    except ValueError:
+        raise HTTPException(403, "Access denied")
     if not src.exists():
-        raise HTTPException(400, f"Source not found: {src}")
+        raise HTTPException(400, f"Source not found: {req.video_path}")
 
     points = extract_gps_from_video(src)
     if not points:
@@ -302,6 +146,25 @@ def extract_gps(req: ExtractGpsRequest):
             w.writerow([p["ts"], p["lat"], p["lng"]])
 
     return {"path": f"GPS/{dest.name}", "filename": dest.name, "points": points}
+
+# ── Delete an uploaded video ─────────────────────────────────────────────
+# Used by the frontend to clean up a video that was uploaded but had no
+# usable GPS telemetry, so failed attempts don't accumulate in Videos/.
+
+class DeleteVideoRequest(BaseModel):
+    video_path: str  # e.g. "Videos/myfile.mp4"
+
+@app.post("/api/delete-video")
+def delete_video(req: DeleteVideoRequest):
+    root = get_root()
+    full = (root / req.video_path).resolve()
+    try:
+        full.relative_to(root.resolve())
+    except ValueError:
+        raise HTTPException(403, "Access denied")
+    if full.exists() and full.is_file():
+        full.unlink()
+    return {"ok": True}
 
 # ── Save image ────────────────────────────────────────────────────────────
 
@@ -382,8 +245,8 @@ def health():
 
 if __name__ == "__main__":
     print("\n" + "="*50)
-    print("  OOH Survey Platform — Local Server")
+    print("  OOH Survey Platform — Server")
     print(f"  Inventory : {ROOT}")
-    print("  Address   : http://localhost:8765")
+    print("  Address   : http://0.0.0.0:8765")
     print("="*50 + "\n")
-    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")
+    uvicorn.run(app, host="0.0.0.0", port=8765, log_level="warning")

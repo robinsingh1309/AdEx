@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react'
-import { Button, Card, Row, Col, Alert, message, Input } from 'antd'
+import { Card, Row, Col, Alert } from 'antd'
 import {
-  FolderOpenOutlined, VideoCameraOutlined,
-  AppstoreOutlined, CheckCircleOutlined, EditOutlined,
+  VideoCameraOutlined,
+  AppstoreOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons'
 import { serverApi } from '../utils/api'
 
 export default function HomePage({ onFolderSet, inventory, folderSet, onNav }) {
-  const [loading, setLoading]       = useState(false)
   const [folderPath, setFolderPath] = useState(null)
-  const [showChange, setShowChange] = useState(false)
-  const [manualPath, setManualPath] = useState('')
 
   // Load the auto-initialised folder path on mount
   useEffect(() => {
@@ -18,42 +16,6 @@ export default function HomePage({ onFolderSet, inventory, folderSet, onNav }) {
       if (f.path) { setFolderPath(f.path); if (!folderSet) onFolderSet() }
     }).catch(() => {})
   }, [])
-
-  const handlePickFolder = async () => {
-    setLoading(true)
-    try {
-      const res = await serverApi.pickFolder()
-      setFolderPath(res.path)
-      setShowChange(false)
-      onFolderSet()
-      message.success(`Inventory folder updated: ${res.name}`)
-    } catch (e) {
-      const detail = e?.response?.data?.detail || ''
-      if (detail !== 'No folder selected') {
-        message.warning('Could not open folder browser. Enter path manually below.')
-        setShowChange(true)
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleManualPath = async () => {
-    if (!manualPath.trim()) return message.error('Enter a folder path')
-    setLoading(true)
-    try {
-      const res = await serverApi.setFolder(manualPath.trim())
-      setFolderPath(res.path)
-      setShowChange(false)
-      setManualPath('')
-      onFolderSet()
-      message.success(`Inventory folder set: ${res.name}`)
-    } catch (e) {
-      message.error(e?.response?.data?.detail || 'Folder not found — check the path')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const sites      = Object.values(inventory?.sites || {})
   const surveys    = sites.flatMap(s => s.surveys || [])
@@ -88,42 +50,9 @@ export default function HomePage({ onFolderSet, inventory, folderSet, onNav }) {
             }}>
               {folderPath}
             </span>
-            <Button
-              size="small" icon={<EditOutlined />} onClick={() => setShowChange(v => !v)}
-              style={{ flexShrink: 0 }}
-            >
-              Change
-            </Button>
           </div>
         ) : (
           <Alert type="warning" showIcon message="Connecting to server…" style={{ marginBottom: 0 }} />
-        )}
-
-        {/* Change folder panel */}
-        {showChange && (
-          <div style={{ marginTop: 14, padding: '14px 16px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-              <Button type="primary" icon={<FolderOpenOutlined />} loading={loading} onClick={handlePickFolder}>
-                Browse for folder
-              </Button>
-              <span style={{ fontSize: 12, color: 'var(--muted)', alignSelf: 'center' }}>
-                Opens a folder browser on your computer
-              </span>
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>
-              Or enter path manually:
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Input
-                value={manualPath}
-                onChange={e => setManualPath(e.target.value)}
-                onPressEnter={handleManualPath}
-                placeholder={navigator.platform?.includes('Win') ? 'D:\\Adex\\OOH_Inventory' : '~/OOH_Inventory'}
-                style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
-              />
-              <Button onClick={handleManualPath} loading={loading}>Set</Button>
-            </div>
-          </div>
         )}
       </Card>
 
