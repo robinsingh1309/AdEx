@@ -6,14 +6,12 @@ Run: python server.py  →  http://localhost:8765
 import os, json, shutil, base64, sys, re, csv
 from pathlib import Path
 from datetime import date
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 import uvicorn
-
-from gpmf import extract_gps_from_video
 
 app = FastAPI(title="OOH Local Platform")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -52,7 +50,7 @@ def get_root() -> Path:
     return ROOT
 
 def ensure_structure(root: Path):
-    for sub in ("Videos", "GPS", "Sites"):
+    for sub in ("GPS", "Sites"):
         (root / sub).mkdir(exist_ok=True)
     inv = root / "inventory.json"
     if not inv.exists():
@@ -126,48 +124,6 @@ def _pick_folder_native() -> Optional[str]:
         return None
 
 
-def _pick_file_native(title: str, filetypes: str) -> Optional[str]:
-    if sys.platform == "win32":
-        import subprocess
-        ps = (
-            "Add-Type -AssemblyName System.Windows.Forms;"
-            "$h=New-Object System.Windows.Forms.Form;"
-            "$h.TopMost=$true;$h.ShowInTaskbar=$false;"
-            "$h.Opacity=0;$h.StartPosition='CenterScreen';$h.Show();$h.Activate();"
-            "$f=New-Object System.Windows.Forms.OpenFileDialog;"
-            f"$f.Title='{title}';$f.Filter='{filetypes}';$f.Multiselect=$false;"
-            "$r=$f.ShowDialog($h);$h.Dispose();"
-            "if($r -eq 'OK'){Write-Output $f.FileName}"
-        )
-        try:
-            out = subprocess.run(["powershell","-NoProfile","-Command",ps],
-                                 capture_output=True, text=True, timeout=120)
-        except subprocess.TimeoutExpired:
-            return None
-        p = out.stdout.strip()
-        return p or None
-
-    elif sys.platform == "darwin":
-        import subprocess
-        s = f'tell application "Finder" to set f to choose file with prompt "{title}"\nPOSIX path of f'
-        r = subprocess.run(["osascript","-e",s], capture_output=True, text=True)
-        p = r.stdout.strip().rstrip("/")
-        return p or None
-
-    else:
-        import subprocess
-        for cmd in [
-            ["zenity","--file-selection",f"--title={title}"],
-            ["kdialog","--getopenfilename", os.path.expanduser("~")],
-        ]:
-            try:
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-                if r.stdout.strip():
-                    return r.stdout.strip()
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                continue
-        return None
-
 # ── Folder endpoints ──────────────────────────────────────────────────────
 
 @app.post("/api/pick-folder")
@@ -231,77 +187,25 @@ def delete_site_files(req: DeleteSiteFilesRequest):
         shutil.rmtree(site_dir)
     return {"ok": True}
 
-# ── Native file picker + local copy ──────────────────────────────────────
+# ── Save GPS (already extracted client-side from the video's GPMF telemetry) ──
+# The video itself is never sent to the server — only these small extracted
+# points, kept purely as a record under GPS/.
 
-@app.post("/api/pick-video-file")
-def pick_video_file():
-    path = _pick_file_native("Select Survey Video",
-                             "Video Files|*.mp4;*.mov;*.avi;*.mkv;*.MP4;*.MOV|All Files|*.*")
-    if not path:
-        raise HTTPException(400, "No file selected")
-    p = Path(path)
-    if not p.exists():
-        raise HTTPException(400, f"File not found: {p}")
-    return {"path": str(p), "name": p.name}
+class SaveGpsRequest(BaseModel):
+    name: str
+    points: list[dict]
 
-
-class CopyVideoRequest(BaseModel):
-    src: str
-
-@app.post("/api/copy-video")
-def copy_video(req: CopyVideoRequest):
+@app.post("/api/save-gps")
+def save_gps(req: SaveGpsRequest):
     root = get_root()
-    src = Path(req.src)
-    if not src.exists():
-        raise HTTPException(400, f"Source not found: {src}")
-    dest = root / "Videos" / src.name
-    shutil.copy2(str(src), str(dest))
-    return {"path": f"Videos/{src.name}", "filename": src.name}
-
-
-# ── Upload (direct — clients should call http://localhost:8765 to skip proxy) ──
-
-@app.post("/api/upload/video")
-async def upload_video(file: UploadFile = File(...)):
-    root = get_root()
-    dest = root / "Videos" / file.filename
-    CHUNK = 4 * 1024 * 1024  # 4 MB per chunk
-    with open(dest, "wb") as fout:
-        while True:
-            chunk = await file.read(CHUNK)
-            if not chunk:
-                break
-            fout.write(chunk)
-    return {"path": f"Videos/{file.filename}", "filename": file.filename}
-
-# ── GPS extraction (from GoPro GPMF telemetry embedded in the video) ────────
-# Runs directly against the original picked file (before it's copied into the
-# inventory) so a "no GPS" failure surfaces in seconds instead of after a
-# multi-minute copy of a multi-GB video. Same arbitrary-local-path trust model
-# as /api/copy-video — no root confinement, since it's read-only.
-
-class ExtractGpsRequest(BaseModel):
-    src: str
-
-@app.post("/api/extract-gps")
-def extract_gps(req: ExtractGpsRequest):
-    root = get_root()
-    src = Path(req.src)
-    if not src.exists():
-        raise HTTPException(400, f"Source not found: {src}")
-
-    points = extract_gps_from_video(src)
-    if not points:
-        raise HTTPException(422, "No GPS telemetry found in this video. GoPro GPS must be enabled (HERO 5+).")
-
-    dest = root / "GPS" / f"{src.stem}_extracted.csv"
+    safe_stem = re.sub(r'[^A-Za-z0-9_-]', '_', Path(req.name).stem) or "survey"
+    dest = root / "GPS" / f"{safe_stem}_extracted.csv"
     with open(dest, "w", newline="") as fout:
         w = csv.writer(fout)
         w.writerow(["timestamp", "latitude", "longitude"])
-        for p in points:
-            w.writerow([p["ts"], p["lat"], p["lng"]])
-
-    return {"path": f"GPS/{dest.name}", "filename": dest.name, "points": points}
+        for p in req.points:
+            w.writerow([p.get("ts"), p.get("lat"), p.get("lng")])
+    return {"ok": True, "path": f"GPS/{dest.name}"}
 
 # ── Save image ────────────────────────────────────────────────────────────
 
@@ -329,50 +233,6 @@ def get_image(path: str):
     except ValueError: raise HTTPException(403, "Access denied")
     if not full.exists(): raise HTTPException(404, "Not found")
     return FileResponse(str(full))
-
-VIDEO_CHUNK_SIZE = 1024 * 1024
-
-def _iter_file_range(path: Path, start: int, end: int):
-    with open(path, "rb") as f:
-        f.seek(start)
-        remaining = end - start + 1
-        while remaining > 0:
-            chunk = f.read(min(VIDEO_CHUNK_SIZE, remaining))
-            if not chunk:
-                break
-            remaining -= len(chunk)
-            yield chunk
-
-@app.get("/api/video")
-def get_video(path: str, request: Request):
-    root = get_root()
-    full = (root / path).resolve()
-    try: full.relative_to(root.resolve())
-    except ValueError: raise HTTPException(403, "Access denied")
-    if not full.exists(): raise HTTPException(404, "Not found")
-
-    file_size = full.stat().st_size
-    range_header = request.headers.get("range")
-
-    if not range_header:
-        return StreamingResponse(
-            _iter_file_range(full, 0, file_size - 1), media_type="video/mp4",
-            headers={"Accept-Ranges": "bytes", "Content-Length": str(file_size)})
-
-    m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-    if not m:
-        raise HTTPException(416, "Invalid Range header")
-    start = int(m.group(1))
-    end   = int(m.group(2)) if m.group(2) else file_size - 1
-    end   = min(end, file_size - 1)
-    if start > end or start >= file_size:
-        raise HTTPException(416, "Range Not Satisfiable",
-                            headers={"Content-Range": f"bytes */{file_size}"})
-    return StreamingResponse(
-        _iter_file_range(full, start, end), status_code=206, media_type="video/mp4",
-        headers={"Accept-Ranges": "bytes",
-                 "Content-Range": f"bytes {start}-{end}/{file_size}",
-                 "Content-Length": str(end - start + 1)})
 
 @app.get("/api/health")
 def health():

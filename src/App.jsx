@@ -28,9 +28,14 @@ export default function App() {
 
   const onFolderSet = () => { setFolderSet(true); refreshInventory() }
 
-  const startReview = (data) => { setSurveyData(data); setPage('review') }
+  const startReview = (data) => {
+    if (surveyData?.videoPath?.startsWith('blob:')) URL.revokeObjectURL(surveyData.videoPath)
+    setSurveyData(data)
+    setPage('review')
+  }
 
   const finishReview = () => {
+    if (surveyData?.videoPath?.startsWith('blob:')) URL.revokeObjectURL(surveyData.videoPath)
     setSurveyData(null)
     refreshInventory()
     setPage('inventory')

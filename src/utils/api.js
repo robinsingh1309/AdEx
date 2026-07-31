@@ -10,18 +10,15 @@ export const serverApi = {
   getInventory:  ()           => api.get('/inventory').then(r => r.data),
   putInventory:  (data)       => api.put('/inventory', data).then(r => r.data),
 
-  extractGps: (src) => api.post('/extract-gps', { src }).then(r => r.data),
+  saveGps: (name, points) =>
+    api.post('/save-gps', { name, points }).then(r => r.data).catch(() => null), // best-effort, nothing reads this CSV back today
 
   saveImage:  (siteId, filename, dataUrl) =>
     api.post('/save-image', { site_id: siteId, filename, data: dataUrl }).then(r => r.data),
 
   imageUrl:   (path) => path ? `/api/image?path=${encodeURIComponent(path)}` : null,
-  videoUrl:   (path) => path ? `/api/video?path=${encodeURIComponent(path)}` : null,
 
   deleteSiteFiles: (site_id) => api.post('/delete-site-files', { site_id }).then(r => r.data),
-
-  pickVideoFile: ()    => api.post('/pick-video-file').then(r => r.data),
-  copyVideo:     (src) => api.post('/copy-video', { src }).then(r => r.data),
 }
 
 export default serverApi
