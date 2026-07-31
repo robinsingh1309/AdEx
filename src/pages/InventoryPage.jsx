@@ -50,7 +50,7 @@ export default function InventoryPage({ inventory, onInventoryUpdate, folderSet 
     const urls = []
     for (const survey of site.surveys || []) {
       const url = serverApi.imageUrl(survey.image)
-      if (url) urls.push({ url, date: survey.survey_date, time: survey.real_world_time, video: survey.video_file, videoTime: survey.timestamp_in_video })
+      if (url) urls.push({ url, date: survey.survey_date, time: survey.real_world_time, video: survey.video_file, videoTime: survey.timestamp_in_video, brand: survey.brand, productType: survey.product_type })
     }
     setSiteImages(prev => ({ ...prev, [site.site_id]: urls }))
   }
@@ -260,6 +260,13 @@ export default function InventoryPage({ inventory, onInventoryUpdate, folderSet 
                         <div style={{ color: 'var(--muted)' }}>Date: <span className="mono" style={{ color: 'var(--text)' }}>{item.date}</span></div>
                         <div style={{ color: 'var(--muted)' }}>Time: <span className="mono" style={{ color: 'var(--accent)' }}>{item.time} IST</span></div>
                         <div style={{ color: 'var(--muted)' }}>Video: <span className="mono" style={{ color: 'var(--text)', fontSize: 11 }}>{item.videoTime}</span></div>
+                        {(item.brand || item.productType) && (
+                          <div style={{ color: 'var(--muted)' }}>
+                            {item.brand && <>Brand: <span style={{ color: 'var(--text)' }}>{item.brand}</span></>}
+                            {item.brand && item.productType && <span style={{ margin: '0 6px' }}>·</span>}
+                            {item.productType && <>Product: <span style={{ color: 'var(--text)' }}>{item.productType}</span></>}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Button, Slider, Tooltip, Modal, Table, Progress, Tag, message, Spin, Row, Col, Divider, InputNumber } from 'antd'
-import { PlayCircleOutlined, PauseCircleOutlined, StepBackwardOutlined, StepForwardOutlined, AimOutlined, CheckOutlined, PlusOutlined, CloseOutlined, ScissorOutlined } from '@ant-design/icons'
+import { Button, Slider, Tooltip, Modal, Table, Progress, Tag, message, Spin, Row, Col, Divider, InputNumber, Input } from 'antd'
+import { PlayCircleOutlined, PauseCircleOutlined, StepBackwardOutlined, StepForwardOutlined, AimOutlined, CheckOutlined, PlusOutlined, CloseOutlined, ScissorOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
 import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -42,6 +42,8 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
   const [radius, setRadius]         = useState(50)
   const [zoomFrame, setZoomFrame]   = useState(null)
   const [videoError, setVideoError] = useState(null)
+  const [brand, setBrand]           = useState('')
+  const [productType, setProductType] = useState('')
 
   // ── Crop-to-billboard selection ──────────────────────────────────────────
   const [selectMode, setSelectMode] = useState(false)   // drag-to-select active
@@ -50,9 +52,7 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
   const dragStartRef = useRef(null)
   const justSelectedRef = useRef(false)  // blocks the click that fires after a completed drag
 
-  const videoUrl = videoPath?.startsWith('blob:') || videoPath?.startsWith('http')
-    ? videoPath
-    : serverApi.videoUrl(videoPath)
+  const videoUrl = videoPath
   const mapCenter = gpsPoints.length ? [gpsPoints[0].lat, gpsPoints[0].lng] : [20.5937, 78.9629]
 
   // ── Live-motion map refs ─────────────────────────────────────────────────
@@ -156,11 +156,6 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
     const gps = getGPSAtVideoTime(gpsPoints, t)
     if (gps) syncMapToGPS(gps)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Release the blob URL when the review unmounts to free memory held by the video file.
-  useEffect(() => {
-    return () => { if (videoPath?.startsWith('blob:')) URL.revokeObjectURL(videoPath) }
-  }, [videoPath])
 
   const togglePlay = async () => {
     const v = videoRef.current
@@ -278,6 +273,8 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
         timestamp_in_video: formatVideoTime(elapsed),
         real_world_time:    new Date(gps.ts).toLocaleTimeString('en-IN', { hour12: false }),
         route:              route || [],
+        brand:              brand.trim() || null,
+        product_type:       productType.trim() || null,
       }]
     }
 
@@ -309,6 +306,8 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
       timestamp_in_video: formatVideoTime(elapsed),
       real_world_time:    new Date(gps.ts).toLocaleTimeString('en-IN', { hour12: false }),
       route:              route || [],
+      brand:              brand.trim() || null,
+      product_type:       productType.trim() || null,
     })
     await serverApi.putInventory(inv)
 
@@ -392,6 +391,8 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
     if (tagState?.captureUrl?.startsWith('blob:')) URL.revokeObjectURL(tagState.captureUrl)
     setShowTagModal(false)
     setCropRect(null)
+    setBrand('')
+    setProductType('')
   }
 
   return (
@@ -400,7 +401,12 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
       {/* Top bar */}
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>Survey Review</div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{videoName ?? videoFile?.name}</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {videoName ?? videoFile?.name}
+          <Tooltip title="Don't move, rename, or delete this video file until the survey is finished — it's read directly from its current location and never uploaded.">
+            <ExclamationCircleOutlined style={{ color: 'var(--muted)', flexShrink: 0 }} />
+          </Tooltip>
+        </div>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
           <div style={{ textAlign: 'center' }}>
@@ -637,6 +643,18 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
                 📍 {tagState.gps?.lat?.toFixed(6)}, {tagState.gps?.lng?.toFixed(6)}
               </div>
             </div>
+
+            {/* Brand / Product type (optional — describes what's currently on the billboard) */}
+            <Row gutter={12} style={{ marginBottom: 4 }}>
+              <Col span={12}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Brand (optional)</div>
+                <Input placeholder="e.g. Coca-Cola" value={brand} onChange={e => setBrand(e.target.value)} />
+              </Col>
+              <Col span={12}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Product Type (optional)</div>
+                <Input placeholder="e.g. Soft Drink" value={productType} onChange={e => setProductType(e.target.value)} />
+              </Col>
+            </Row>
 
             <Divider style={{ borderColor: 'var(--border)', margin: '12px 0' }} />
 
