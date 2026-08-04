@@ -39,7 +39,8 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
   const [tagState, setTagState]     = useState(null)  // {capture, gps, candidates, step}
   const [comparing, setComparing]   = useState(false)
   const [compareProgress, setCompareProgress] = useState(0)
-  const [radius, setRadius]         = useState(50)
+  const [radius, setRadius]         = useState(5)
+  const [saving, setSaving]         = useState(false)
   const [zoomFrame, setZoomFrame]   = useState(null)
   const [videoError, setVideoError] = useState(null)
   const [brand, setBrand]           = useState('')
@@ -229,9 +230,7 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
 
     // Image comparison
     setComparing(true)
-    const results = []
-    for (let i = 0; i < nearby.length; i++) {
-      const site = nearby[i]
+    const results = await Promise.all(nearby.map(async (site, i) => {
       const imgUrl = serverApi.imageUrl(site.master_image)
       let similarity = 0
       try {
@@ -240,8 +239,8 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
       } catch (e) {
         console.warn('Image comparison failed:', e)
       }
-      results.push({ ...site, similarity, masterImageUrl: imgUrl })
-    }
+      return { ...site, similarity, masterImageUrl: imgUrl }
+    }))
     setComparing(false)
     setCompareProgress(0)
     results.sort((a, b) => b.similarity - a.similarity)
@@ -250,25 +249,26 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
 
   // ── Save as new site ─────────────────────────────────────────────────────
   const saveNewSite = async () => {
+    setSaving(true)
+    try {
     const { capture, gps, route } = tagState
     const inv     = await serverApi.getInventory()
     const siteId  = nextSiteId(inv)
     const today   = new Date().toISOString().slice(0, 10)
     const filename = `site_master.jpg`
-    const surveyImg = `survey_${today.replace(/-/g,'')}.jpg`
+    const imagePath = `Sites/${siteId}/${filename}`
 
-    await serverApi.saveImage(siteId, filename,    capture)
-    await serverApi.saveImage(siteId, surveyImg,   capture)
+    await serverApi.saveImage(siteId, filename, capture)
 
     const newSite = {
       site_id:      siteId,
       latitude:     gps.lat,
       longitude:    gps.lng,
       created_at:   today,
-      master_image: `Sites/${siteId}/${filename}`,
+      master_image: imagePath,
       surveys: [{
         survey_date:        today,
-        image:              `Sites/${siteId}/${surveyImg}`,
+        image:              imagePath,
         video_file:         videoFile?.name ?? videoPath,
         timestamp_in_video: formatVideoTime(elapsed),
         real_world_time:    new Date(gps.ts).toLocaleTimeString('en-IN', { hour12: false }),
@@ -286,10 +286,15 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
     closeTagModal()
     onInventoryUpdate()
     message.success(`New site created: ${siteId}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ── Tag to existing site ─────────────────────────────────────────────────
   const saveToExisting = async (site) => {
+    setSaving(true)
+    try {
     const { capture, gps, route } = tagState
     const inv  = await serverApi.getInventory()
     const today = new Date().toISOString().slice(0, 10)
@@ -315,6 +320,9 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
     closeTagModal()
     onInventoryUpdate()
     message.success(`Survey added to ${site.site_id}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const realTime = currentGPS ? new Date(currentGPS.ts).toLocaleTimeString('en-IN', { hour12: false }) : '--:--:--'
@@ -571,7 +579,7 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, justifyContent: 'center' }}>
               {cropRect && <span style={{ fontSize: 11, color: 'var(--accent)' }}>✂ Capturing billboard area only</span>}
               <span style={{ fontSize: 11, color: 'var(--muted)' }}>Search radius:</span>
-              <InputNumber min={10} max={200} step={10} value={radius} onChange={setRadius} size="small" style={{ width: 70 }} />
+              <InputNumber min={5} max={200} step={5} value={radius} onChange={setRadius} size="small" style={{ width: 70 }} />
               <span style={{ fontSize: 11, color: 'var(--muted)' }}>metres</span>
             </div>
           </div>
@@ -672,7 +680,7 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>No sites within {radius}m</div>
                 <div style={{ color: 'var(--muted)', marginBottom: 20 }}>This appears to be a new OOH site.</div>
-                <Button type="primary" icon={<PlusOutlined />} onClick={saveNewSite} size="large">Create New Site</Button>
+                <Button type="primary" icon={<PlusOutlined />} onClick={saveNewSite} size="large" loading={saving} disabled={saving}>Create New Site</Button>
               </div>
             )}
 
@@ -695,7 +703,7 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                           <span className="mono" style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{site.site_id}</span>
                           <span style={{ fontSize: 11, color: 'var(--muted)' }}>{site.distance}m away</span>
-                          <Button type="primary" icon={<CheckOutlined />} onClick={() => saveToExisting(site)} size="small" style={{ marginLeft: 'auto' }}>
+                          <Button type="primary" icon={<CheckOutlined />} onClick={() => saveToExisting(site)} size="small" loading={saving} disabled={saving} style={{ marginLeft: 'auto' }}>
                             Tag Here
                           </Button>
                         </div>
@@ -739,7 +747,7 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
                 <Divider style={{ borderColor: 'var(--border)', margin: '8px 0 12px' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>None of these match?</div>
-                  <Button icon={<PlusOutlined />} onClick={saveNewSite}>Create New Site Instead</Button>
+                  <Button icon={<PlusOutlined />} onClick={saveNewSite} loading={saving} disabled={saving}>Create New Site Instead</Button>
                 </div>
               </>
             )}
