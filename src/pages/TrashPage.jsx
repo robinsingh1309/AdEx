@@ -31,12 +31,15 @@ export default function TrashPage({ inventory, onInventoryUpdate, folderSet }) {
   const permanentDelete = async (siteId) => {
     setLoading(true)
     try {
-      const inv = await serverApi.getInventory()
-      delete inv.trash[siteId]
-      await serverApi.putInventory(inv)
-      await serverApi.deleteSiteFiles(siteId)
+      const result = await serverApi.deleteSiteFiles(siteId)
+      const latest = await serverApi.getInventory()
+      if (latest.trash?.[siteId]) {
+        delete latest.trash[siteId]
+      }
+      await serverApi.putInventory(latest)
       onInventoryUpdate()
-      message.success(`${siteId} permanently deleted`)
+      const hiddenCount = result?.hidden_count ?? 0
+      message.success(`${siteId}: hidden ${hiddenCount} media file(s) in S3 archive`)
     } catch {
       message.error('Delete failed')
     } finally {
@@ -75,7 +78,7 @@ export default function TrashPage({ inventory, onInventoryUpdate, folderSet }) {
           </Popconfirm>
           <Popconfirm
             title={`Permanently delete ${r.site_id}?`}
-            description="Removes all images from disk. This cannot be undone."
+            description="Archives survey media and hides it from display. This cannot be undone."
             onConfirm={() => permanentDelete(r.site_id)}
             okText="Delete Forever"
             okButtonProps={{ danger: true }}

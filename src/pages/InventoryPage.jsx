@@ -20,6 +20,15 @@ function PinPicker({ onPick }) {
   return null
 }
 
+function getActiveSiteImagePath(site) {
+  const surveys = Array.isArray(site?.surveys) ? site.surveys : []
+  for (let index = surveys.length - 1; index >= 0; index--) {
+    const survey = surveys[index]
+    if (!survey?.isArchived && survey?.image) return survey.image
+  }
+  return site?.master_image || null
+}
+
 export default function InventoryPage({ inventory, onInventoryUpdate, folderSet }) {
   const [selectedSite, setSelectedSite]   = useState(null)
   const [showDetail, setShowDetail]       = useState(false)
@@ -32,6 +41,7 @@ export default function InventoryPage({ inventory, onInventoryUpdate, folderSet 
   const [mapCenter, setMapCenter]         = useState([20.5937, 78.9629])
 
   const sites = Object.values(inventory?.sites || {})
+  const selectedSitePreview = getActiveSiteImagePath(selectedSite)
 
   if (!folderSet) {
     return (
@@ -49,6 +59,7 @@ export default function InventoryPage({ inventory, onInventoryUpdate, folderSet 
   const loadSiteImages = async (site) => {
     const urls = []
     for (const survey of site.surveys || []) {
+      if (survey.isArchived) continue
       const url = serverApi.imageUrl(survey.image)
       if (url) urls.push({ url, date: survey.survey_date, time: survey.real_world_time, video: survey.video_file, videoTime: survey.timestamp_in_video, brand: survey.brand, productType: survey.product_type })
     }
@@ -77,26 +88,39 @@ export default function InventoryPage({ inventory, onInventoryUpdate, folderSet 
   // ── Add site manually ────────────────────────────────────────────────────
   const handleAddSite = async () => {
     const vals = await addForm.validateFields()
+    if (!addImage) {
+      message.error('Site image is required to create a media site')
+      return
+    }
+
     setSaving(true)
     try {
       const inv    = await serverApi.getInventory()
       const siteId = nextSiteId(inv)
       const today  = new Date().toISOString().slice(0, 10)
-      let masterImagePath = null
+      const surveyImg = `manual_${today.replace(/-/g, '')}_${Date.now()}.jpg`
 
-      if (addImage) {
-        await serverApi.saveImage(siteId, 'site_master.jpg', addImage)
-        masterImagePath = `Sites/${siteId}/site_master.jpg`
-      }
+      await serverApi.saveImage(siteId, surveyImg, addImage)
 
       inv.sites[siteId] = {
         site_id:      siteId,
-        latitude:     vals.lat  || pinLatLng?.lat  || 0,
-        longitude:    vals.lng  || pinLatLng?.lng  || 0,
+        latitude:     vals.lat || pinLatLng?.lat || 0,
+        longitude:    vals.lng || pinLatLng?.lng || 0,
         landmark:     vals.landmark || '',
+        brand:        vals.brand || '',
+        product_type: vals.productType || '',
         created_at:   today,
-        master_image: masterImagePath,
-        surveys: [],
+        surveys: [{
+          survey_date:        today,
+          image:              `Sites/${siteId}/${surveyImg}`,
+          isArchived:         false,
+          video_file:         'Manual upload',
+          timestamp_in_video: 'N/A',
+          real_world_time:    new Date().toLocaleTimeString('en-IN', { hour12: false }),
+          route:              [],
+          brand:              vals.brand || null,
+          product_type:       vals.productType || null,
+        }],
       }
       inv.total_sites = Object.keys(inv.sites).length
       await serverApi.putInventory(inv)
@@ -107,7 +131,8 @@ export default function InventoryPage({ inventory, onInventoryUpdate, folderSet 
       setPinLatLng(null)
       message.success(`${siteId} added to inventory`)
     } catch (e) {
-      message.error('Failed to save site')
+      const errMsg = e?.response?.data?.detail || e?.response?.data?.message || e?.message || 'Failed to save site'
+      message.error(errMsg)
     } finally {
       setSaving(false)
     }
@@ -211,11 +236,11 @@ export default function InventoryPage({ inventory, onInventoryUpdate, folderSet 
       >
         {selectedSite && (
           <div>
-            {/* Master image */}
-            {selectedSite.master_image && (
+            {/* Site preview image */}
+            {selectedSitePreview && (
               <img
-                src={serverApi.imageUrl(selectedSite.master_image)}
-                alt="master"
+                src={serverApi.imageUrl(selectedSitePreview)}
+                alt="site preview"
                 style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 8, marginBottom: 16, border: '1px solid var(--border)' }}
               />
             )}
@@ -227,11 +252,21 @@ export default function InventoryPage({ inventory, onInventoryUpdate, folderSet 
               <Descriptions.Item label="Longitude">
                 <span className="mono" style={{ color: 'var(--text)' }}>{selectedSite.longitude?.toFixed(6)}</span>
               </Descriptions.Item>
-              {selectedSite.landmark && (
+              {selectedSite.brand ? (
+                <Descriptions.Item label="Brand">
+                  {selectedSite.brand}
+                </Descriptions.Item>
+              ) : null}
+              {selectedSite.product_type ? (
+                <Descriptions.Item label="Product Type">
+                  {selectedSite.product_type}
+                </Descriptions.Item>
+              ) : null}
+              {selectedSite.landmark ? (
                 <Descriptions.Item label="Landmark" span={2}>
                   <span style={{ color: 'var(--text)' }}>{selectedSite.landmark}</span>
                 </Descriptions.Item>
-              )}
+              ) : null}
               <Descriptions.Item label="First seen">
                 <span style={{ color: 'var(--text)' }}>{selectedSite.created_at}</span>
               </Descriptions.Item>
@@ -335,7 +370,19 @@ export default function InventoryPage({ inventory, onInventoryUpdate, folderSet 
           <Form.Item name="landmark" label="Landmark / Area (optional)">
             <Input placeholder="e.g. Andheri West, near station" />
           </Form.Item>
-          <Form.Item label="Site Image (optional)">
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="brand" label="Brand (optional)">
+                <Input placeholder="Enter brand name" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="productType" label="Product Type (optional)">
+                <Input placeholder="Enter product type" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item label="Site Image" required>
             <Upload
               beforeUpload={(file) => {
                 const reader = new FileReader()

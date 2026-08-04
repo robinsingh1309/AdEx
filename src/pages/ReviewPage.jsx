@@ -23,6 +23,15 @@ function makeIcon(color, size = 12) {
   })
 }
 
+function getActiveSiteImagePath(site) {
+  const surveys = Array.isArray(site?.surveys) ? site.surveys : []
+  for (let index = surveys.length - 1; index >= 0; index--) {
+    const survey = surveys[index]
+    if (!survey?.isArchived && survey?.image) return survey.image
+  }
+  return site?.master_image || null
+}
+
 const STEP_FRAME = 1/30 // ~1 frame at 30fps
 
 export default function ReviewPage({ surveyData, inventory, onFinish, onPause, onInventoryUpdate }) {
@@ -232,13 +241,16 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
     const results = []
     for (let i = 0; i < nearby.length; i++) {
       const site = nearby[i]
-      const imgUrl = serverApi.imageUrl(site.master_image)
+      const referenceImage = getActiveSiteImagePath(site)
+      const imgUrl = serverApi.imageUrl(referenceImage)
       let similarity = 0
-      try {
-        const r = await compareImages(dataUrl, imgUrl, p => setCompareProgress(Math.round(((i + p/100) / nearby.length) * 100)))
-        similarity = r.score
-      } catch (e) {
-        console.warn('Image comparison failed:', e)
+      if (imgUrl) {
+        try {
+          const r = await compareImages(dataUrl, imgUrl, p => setCompareProgress(Math.round(((i + p/100) / nearby.length) * 100)))
+          similarity = r.score
+        } catch (e) {
+          console.warn('Image comparison failed:', e)
+        }
       }
       results.push({ ...site, similarity, masterImageUrl: imgUrl })
     }
@@ -254,10 +266,8 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
     const inv     = await serverApi.getInventory()
     const siteId  = nextSiteId(inv)
     const today   = new Date().toISOString().slice(0, 10)
-    const filename = `site_master.jpg`
     const surveyImg = `survey_${today.replace(/-/g,'')}.jpg`
 
-    await serverApi.saveImage(siteId, filename,    capture)
     await serverApi.saveImage(siteId, surveyImg,   capture)
 
     const newSite = {
@@ -265,10 +275,10 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
       latitude:     gps.lat,
       longitude:    gps.lng,
       created_at:   today,
-      master_image: `Sites/${siteId}/${filename}`,
       surveys: [{
         survey_date:        today,
         image:              `Sites/${siteId}/${surveyImg}`,
+        isArchived:         false,
         video_file:         videoFile?.name ?? videoPath,
         timestamp_in_video: formatVideoTime(elapsed),
         real_world_time:    new Date(gps.ts).toLocaleTimeString('en-IN', { hour12: false }),
@@ -302,6 +312,7 @@ export default function ReviewPage({ surveyData, inventory, onFinish, onPause, o
     existing.surveys.push({
       survey_date:        today,
       image:              `Sites/${site.site_id}/${surveyImg}`,
+      isArchived:         false,
       video_file:         videoFile?.name ?? videoPath,
       timestamp_in_video: formatVideoTime(elapsed),
       real_world_time:    new Date(gps.ts).toLocaleTimeString('en-IN', { hour12: false }),
